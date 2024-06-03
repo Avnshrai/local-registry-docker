@@ -1,0 +1,137 @@
+---
+- name: Setup Local Docker Registry with Nginx
+  hosts: all
+  become: yes
+
+  vars:
+    docker_gpg_url: "https://download.docker.com/linux/ubuntu/gpg"
+    docker_repo: "deb [arch={{ ansible_architecture }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    nginx_ssl_certificate: "/etc/ssl/certs/nginx-selfsigned.crt"
+    nginx_ssl_certificate_key: "/etc/ssl/private/nginx-selfsigned.key"
+    registry_server_name: "internal.yntraa.com"
+    registry_data_directory: "/home/{{ ansible_user }}/project/registry-data"
+    docker_compose_file: "/home/{{ ansible_user }}/project/docker-compose.yml"
+
+  tasks:
+    - name: Install prerequisite packages
+      apt:
+        name: "{{ item }}"
+        state: present
+        update_cache: yes
+      loop:
+        - ca-certificates
+        - curl
+        - apt-transport-https
+
+    - name: Create directory for Docker keyring
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download Docker GPG key
+      get_url:
+        url: "{{ docker_gpg_url }}"
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "{{ docker_repo }}"
+        filename: "docker"
+        state: present
+
+    - name: Install Docker packages
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+
+    - name: Create project directory
+      file:
+        path: "/home/{{ ansible_user }}/project"
+        state: directory
+        mode: '0755'
+
+    - name: Create registry data directory
+      file:
+        path: "{{ registry_data_directory }}"
+        state: directory
+        mode: '0755'
+
+    - name: Create Docker Compose file for registry
+      copy:
+        dest: "{{ docker_compose_file }}"
+        content: |
+          version: '3'
+          services:
+            registry:
+              restart: always
+              image: registry:latest
+              ports:
+                - "5000:5000"
+              environment:
+                REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /registry-data
+              volumes:
+                - ./registry-data:/registry-data
+        mode: '0644'
+
+    - name: Install Nginx and Apache utils
+      apt:
+        name:
+          - nginx
+          - apache2-utils
+        state: present
+
+    - name: Create Nginx configuration for Docker registry
+      copy:
+        dest: /etc/nginx/conf.d/registry.conf
+        content: |
+          server {
+            listen 443 ssl;
+            listen [::]:443 ssl;
+            ssl_certificate {{ nginx_ssl_certificate }};
+            ssl_certificate_key {{ nginx_ssl_certificate_key }};
+            server_name {{ registry_server_name }};
+            access_log /var/log/nginx/access.log;
+            error_log /var/log/nginx/error.log;
+
+            location / {
+              if ($http_user_agent ~ "^(docker/1\\.(3|4|5(?!\\.[0-9]-dev))|Go ).*$" ) {
+                return 404;
+              }
+              proxy_pass http://localhost:5000;
+              proxy_set_header Host $http_host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+              proxy_read_timeout 900;
+            }
+          }
+        mode: '0644'
+
+    - name: Add entry to /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ hostvars[inventory_hostname]['ansible_host'] }} internal.yntraa.com"
+        state: present
+
+    - name: Increase max upload file size in Nginx configuration
+      lineinfile:
+        path: /etc/nginx/nginx.conf
+        insertafter: http {
+        line: "    client_max_body_size 20000m;"
+        state: present
+
+    - name: Restart Nginx
+      service:
+        name: nginx
+        state: restarted
+
+    - name: Start Docker Registry Container
+      docker_compose:
+        project_src: "/home/{{ ansible_user }}/project"
+        state: present
