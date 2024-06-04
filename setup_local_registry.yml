@@ -87,6 +87,18 @@
           - apache2-utils
         state: present
 
+    - name: Copy SSL Certificate to target location
+      copy:
+        src: /tmp/nginx-selfsigned.crt
+        dest: "{{ nginx_ssl_certificate }}"
+        mode: '0644'
+
+    - name: Copy SSL Certificate Key to target location
+      copy:
+        src: /tmp/nginx-selfsigned.key
+        dest: "{{ nginx_ssl_certificate_key }}"
+        mode: '0600'
+
     - name: Create Nginx configuration for Docker registry
       copy:
         dest: /etc/nginx/conf.d/registry.conf
@@ -120,17 +132,30 @@
         line: "{{ hostvars[inventory_hostname]['ansible_host'] }} internal.yntraa.com"
         state: present
 
-    - name: Increase max upload file size in Nginx configuration
-      lineinfile:
+    - name: Ensure client_max_body_size is set correctly
+      blockinfile:
         path: /etc/nginx/nginx.conf
-        insertafter: http {
-        line: "    client_max_body_size 20000m;"
-        state: present
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
+        block: |
+          http {
+              client_max_body_size 20000m;
+          }
+      when: "'client_max_body_size' not in lookup('file', '/etc/nginx/nginx.conf')"
+
+    - name: Validate Nginx configuration
+      command: nginx -t
+      register: nginx_config_test
+
+    - name: Fail if Nginx configuration is invalid
+      fail:
+        msg: "Nginx configuration is invalid. Please check the configuration."
+      when: nginx_config_test.rc != 0
 
     - name: Restart Nginx
       service:
         name: nginx
         state: restarted
+      when: nginx_config_test.rc == 0
 
     - name: Start Docker Registry Container
       docker_compose:
