@@ -46,10 +46,8 @@
     - name: Install Docker packages
       apt:
         name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-compose-plugin
+          - docker.io
+          - docker-compose
         state: present
 
     - name: Create project directory
