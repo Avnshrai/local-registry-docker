@@ -46,8 +46,10 @@
     - name: Install Docker packages
       apt:
         name:
-          - docker.io
-          - docker-compose
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
         state: present
 
     - name: Create project directory
@@ -131,15 +133,12 @@
         line: "{{ hostvars[inventory_hostname]['ansible_host'] }} internal.yntraa.com"
         state: present
 
-    - name: Ensure client_max_body_size is set correctly
+    - name: Ensure client_max_body_size is set correctly inside http block
       blockinfile:
         path: /etc/nginx/nginx.conf
-        marker: "# {mark} ANSIBLE MANAGED BLOCK"
         block: |
-          http {
-              client_max_body_size 20000m;
-          }
-      when: "'client_max_body_size' not in lookup('file', '/etc/nginx/nginx.conf')"
+          client_max_body_size 20000m;
+        insertafter: "http {"
 
     - name: Validate Nginx configuration
       command: nginx -t
