@@ -175,8 +175,8 @@
         mode: '0644'
       when: inventory_hostname != "server1"
 
-    - name: Restart Docker on other servers
-      service:
-        name: docker
-        state: restarted
-      when: inventory_hostname != "server1"
+    # - name: Restart Docker on other servers
+    #   service:
+    #     name: docker
+    #     state: restarted
+    #   when: inventory_hostname != "server1"
