@@ -11,6 +11,7 @@
     registry_server_name: "internal.yntraa.com"
     registry_data_directory: "/home/{{ ansible_user }}/project/registry-data"
     docker_compose_file: "/home/{{ ansible_user }}/project/docker-compose.yml"
+    docker_cert_path: "/etc/docker/certs.d/internal.yntraa.com/ca.crt"  # Path to store cert on all other servers
 
   tasks:
     - name: Install prerequisite packages
@@ -45,8 +46,10 @@
     - name: Install Docker packages
       apt:
         name:
-          - docker.io
-          - docker-compose
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
         state: present
 
     - name: Create project directory
@@ -159,3 +162,23 @@
       docker_compose:
         project_src: "/home/{{ ansible_user }}/project"
         state: present
+
+    - name: Create Docker certs directory on other servers
+      file:
+        path: "/etc/docker/certs.d/internal.yntraa.com"
+        state: directory
+        mode: '0755'
+      when: inventory_hostname != "server1"
+
+    - name: Distribute SSL certificate to Docker certs directory on other servers
+      copy:
+        src: /tmp/nginx-selfsigned.crt
+        dest: "{{ docker_cert_path }}"
+        mode: '0644'
+      when: inventory_hostname != "server1"
+
+    - name: Restart Docker on other servers
+      service:
+        name: docker
+        state: restarted
+      when: inventory_hostname != "server1"
