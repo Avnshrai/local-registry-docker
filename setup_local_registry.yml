@@ -22,6 +22,7 @@
         - ca-certificates
         - curl
         - apt-transport-https
+        - unzip
 
     - name: Create directory for Docker keyring
       file:
