@@ -1,6 +1,6 @@
 ---
 - name: Setup Local Docker Registry with Nginx
-  hosts: all
+  hosts: server1
   become: yes
 
   vars:
@@ -11,7 +11,6 @@
     registry_server_name: "internal.yntraa.com"
     registry_data_directory: "/home/{{ ansible_user }}/project/registry-data"
     docker_compose_file: "/home/{{ ansible_user }}/project/docker-compose.yml"
-    docker_cert_path: "/etc/docker/certs.d/internal.yntraa.com/ca.crt"  # Path to store cert on all other servers
 
   tasks:
     - name: Install prerequisite packages
@@ -46,8 +45,10 @@
     - name: Install Docker packages
       apt:
         name:
-          - docker.io
-          - docker-compose
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
         state: present
 
     - name: Create project directory
@@ -158,6 +159,10 @@
         project_src: "/home/{{ ansible_user }}/project"
         state: present
 
+- name: Distribute SSL certificate to other servers
+  hosts: all
+  become: yes
+  tasks:
     - name: Create Docker certs directory on other servers
       file:
         path: "/etc/docker/certs.d/internal.yntraa.com"
@@ -168,7 +173,7 @@
     - name: Distribute SSL certificate to Docker certs directory on other servers
       copy:
         src: /tmp/nginx-selfsigned.crt
-        dest: "{{ docker_cert_path }}"
+        dest: "/etc/docker/certs.d/internal.yntraa.com/ca.crt"
         mode: '0644'
       when: inventory_hostname != "server1"
 
