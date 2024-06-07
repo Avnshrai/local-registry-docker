@@ -175,8 +175,33 @@
         mode: '0644'
       when: inventory_hostname != "server1"
 
-    # - name: Restart Docker on other servers
-    #   service:
-    #     name: docker
-    #     state: restarted
-    #   when: inventory_hostname != "server1"
+    - name: Create CA certificates directory for imgpkg
+      file:
+        path: "/usr/local/share/ca-certificates"
+        state: directory
+        mode: '0755'
+      when: inventory_hostname != "server1"
+
+    - name: Copy SSL certificate for imgpkg
+      copy:
+        src: /tmp/nginx-selfsigned.crt
+        dest: "/usr/local/share/ca-certificates/nginx-selfsigned.crt"
+        mode: '0644'
+      when: inventory_hostname != "server1"
+
+    - name: Update CA certificates
+      command: update-ca-certificates
+      when: inventory_hostname != "server1"
+    - name: Create containerd certs directory on other servers
+      file:
+        path: "/etc/containerd/certs.d/internal.yntraa.com"
+        state: directory
+        mode: '0755'
+      when: inventory_hostname != "server1"
+
+    - name: Distribute SSL certificate to containerd certs directory on other servers
+      copy:
+        src: /tmp/nginx-selfsigned.crt
+        dest: "/etc/containerd/certs.d/internal.yntraa.com/ca.crt"
+        mode: '0644'
+      when: inventory_hostname != "server1"
